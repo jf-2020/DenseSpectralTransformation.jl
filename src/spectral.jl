@@ -32,7 +32,7 @@ struct EtaXError{T} <: Exception
   etax :: T
 end
 
-function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0, tolcheck = -1.0)
+function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
 
   Base.require_one_based_indexing(A,B)
   
@@ -52,10 +52,6 @@ function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0, tolcheck = -1.
   r = Fb.rank
   ip = invperm(Fb.p)
   Cb = Matrix(Fb.L)[ip, 1:r]
-  
-  if tolcheck >= 0
-    opnorm(Cb * Cb' - B, Inf) <= tolcheck * opnorm(B, Inf)
-  end
   
   Fa = lqd(Hermitian(A1, :L))
   Ca = Matrix(Fa)
