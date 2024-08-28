@@ -4,8 +4,8 @@ function shift(
   σ,
 ) where {E<:AbstractFloat}
   A1 = similar(A)
-  for j in axes(A, 1)
-    for k in axes(A, 2)
+  for k in axes(A, 2)
+    for j in axes(A, 1)
       A1[j, k] = fma(-σ, B[j, k], A[j, k])
     end
   end
@@ -18,10 +18,10 @@ function shift(
   σ,
 ) where {E<:AbstractFloat}
   A1 = similar(A)
-  for j in axes(A, 1)
-    for k in axes(A, 2)
-      zr = fma(-σ, real(B[j,k]), real(A[j,k]))
-      zi = fma(-σ, imag(B[j,k]), imag(A[j,k]))
+  for k in axes(A, 2)
+    for j in axes(A, 1)
+      zr = fma(-σ, real(B[j, k]), real(A[j, k]))
+      zi = fma(-σ, imag(B[j, k]), imag(A[j, k]))
       A1[j, k] = complex(zr, zi)
     end
   end
