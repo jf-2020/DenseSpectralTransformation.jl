@@ -1,30 +1,34 @@
-function shift(
+function shift!(
   A::AbstractMatrix{E},
   B::AbstractMatrix{E},
   σ,
 ) where {E<:AbstractFloat}
-  A1 = similar(A)
   for k in axes(A, 2)
     for j in axes(A, 1)
-      A1[j, k] = fma(-σ, B[j, k], A[j, k])
+      A[j, k] = fma(-σ, B[j, k], A[j, k])
     end
   end
-  return A1
+  return A
 end
 
-function shift(
+function shift!(
   A::AbstractMatrix{Complex{E}},
   B::AbstractMatrix{Complex{E}},
   σ,
 ) where {E<:AbstractFloat}
-  A1 = similar(A)
   for k in axes(A, 2)
     for j in axes(A, 1)
       zr = fma(-σ, real(B[j, k]), real(A[j, k]))
       zi = fma(-σ, imag(B[j, k]), imag(A[j, k]))
-      A1[j, k] = complex(zr, zi)
+      A[j, k] = complex(zr, zi)
     end
   end
+  return A
+end
+
+function shift(A::AbstractMatrix, B::AbstractMatrix, σ)
+  A1 = copy(A)
+  shift!(A1, B, σ)
   return A1
 end
 
