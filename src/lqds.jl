@@ -114,7 +114,7 @@ end
 
 function Base.:*(
   lqd::LQD{E},
-  A::VecOrMat{E},
+  A::AbstractVecOrMat{E},
   ) where {E}
   return ((lqd.uplo == 'L' ? lqd.L : lqd.U) * (lqd.Q * (lqd.D * A)))[
     invperm(lqd.p),
@@ -123,7 +123,7 @@ function Base.:*(
 end
 
 function Base.:*(
-  A::VecOrMat{E},
+  A::AbstractVecOrMat{E},
   lqd::LQD{E},
   ) where {E}
   return ((A[:,lqd.p] * (lqd.uplo == 'L' ? lqd.L : lqd.U)) * lqd.Q) * lqd.D
@@ -131,13 +131,20 @@ end
 
 function Base.:\(
   lqd::LQD{E},
-  A::VecOrMat{E},
+  A::AbstractVecOrMat{E},
   ) where {E}
   return lqd.D \ (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U) \ A[lqd.p, :]))
 end
 
 function Base.:/(
-  A::VecOrMat{E},
+  A::AbstractMatrix{E},
+  lqd::LQD{E},
+  ) where {E}
+  return (((A / lqd.D) * lqd.Q') / (lqd.uplo == 'L' ? lqd.L : lqd.U))[:, invperm(lqd.p)]
+end
+
+function Base.:/(
+  A::AbstractVector{E},
   lqd::LQD{E},
   ) where {E}
   return (((A / lqd.D) * lqd.Q') / (lqd.uplo == 'L' ? lqd.L : lqd.U))[:, invperm(lqd.p)]
@@ -147,12 +154,25 @@ Base.adjoint(lqd::T) where {E, T <: LQD{E}} = Adjoint{E, T}(lqd)
 
 Base.adjoint(adjlqd::Adjoint{E,T}) where {E, T <: LQD{E}} = adjlqd.parent
 
-function Base.:*(adjlqd::Adjoint{E,<:LQD{E}}, A::VecOrMat{E}) where {E}
+function Base.:*(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractMatrix{E}) where {E}
   lqd = adjlqd.parent
   return lqd.D' * (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U)' * A[lqd.p, :]))
 end
 
-function Base.:*(A::VecOrMat{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
+function Base.:*(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractVector{E}) where {E}
+  lqd = adjlqd.parent
+  return lqd.D' * (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U)' * A[lqd.p, :]))
+end
+
+function Base.:*(A::AbstractMatrix{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
+  lqd = adjlqd.parent
+  return (((A * lqd.D') * lqd.Q') * (lqd.uplo == 'L' ? lqd.L : lqd.U)')[
+    :,
+    invperm(lqd.p),
+  ]
+end
+
+function Base.:*(A::AbstractVector{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
   lqd = adjlqd.parent
   return (((A * lqd.D') * lqd.Q') * (lqd.uplo == 'L' ? lqd.L : lqd.U)')[
     :,
@@ -161,14 +181,14 @@ function Base.:*(A::VecOrMat{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
 end
 
 function Base.:/(
-  A::VecOrMat{E},
+  A::AbstractVecOrMat{E},
   adjlqd::Adjoint{E, <:LQD{E}},
   ) where {E}
   lqd = adjlqd.parent
   return ((A[:, lqd.p] / (lqd.uplo == 'L' ? lqd.L : lqd.U)') * lqd.Q) / lqd.D'
 end
 
-function Base.:\(adjlqd::Adjoint{E,<:LQD{E}}, A::VecOrMat{E}) where {E}
+function Base.:\(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractVecOrMat{E}) where {E}
   lqd = adjlqd.parent
   return ((lqd.uplo == 'L' ? lqd.L : lqd.U)' \ (lqd.Q * (lqd.D' \ A)))[
     invperm(lqd.p),
