@@ -54,7 +54,7 @@ function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
   Cb = Matrix(Fb.L)[ip, 1:r]
   
   Fa = lqd(Hermitian(A1, :L))
-  Ca = Matrix(Fa)
+
   Da = Fa.S
   η = sqrt(opnorm(A1, Inf) / opnorm(B, Inf))
   
