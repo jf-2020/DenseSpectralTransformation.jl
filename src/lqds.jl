@@ -34,7 +34,7 @@ function lqd!(A::Hermitian{E, <:AbstractMatrix{E}}) where {E}
   n, _ = size(A)
   s = similar(F.p)
   uplo = F.uplo == 'U' ? :U : :L
-  LorUdata = uplo == :U ? copy(F.U).data : copy(F.L).data
+  LorUdata = uplo == :U ? F.U.data : F.L.data
   Qdata = similar(F.LD, n, 2)
   Qdata .= zero(eltype(Qdata))
   d = similar(F.LD, n)
