@@ -5,7 +5,7 @@ struct LQD{
   T<:AbstractMatrix{E},
   V<:AbstractVector{E},
   VI<:AbstractVector{Int64},
-} <: Factorization{E}
+  } <: Factorization{E}
   LorUdata::T
   Qdata::T
   ipiv::VI
@@ -58,6 +58,62 @@ function lqd!(A::Hermitian{E, <:AbstractMatrix{E}}) where {E}
 end
 
 lqd(A::Hermitian{E,<:AbstractMatrix{E}}) where {E} = lqd!(copy(A))
+
+function ldiv_LQD_Q!(F::LQD, A::AbstractMatrix)
+  Qdata = getfield(F, :Qdata)
+  ipiv = getfield(F, :ipiv)
+  n = length(ipiv)
+  j = 1
+  while j <= n
+    if ipiv[j] >= 1
+      q11 = Qdata[j,1]
+      for k in axes(A,2)
+        A[j, k] = conj(q11)*A[j, k]
+      end
+      j += 1
+    else
+      q11 = Qdata[j,1]
+      q12 = Qdata[j,2]
+      q21 = Qdata[j+1, 1]
+      q22 = Qdata[j+1, 2]
+      for k in axes(A,2)
+        tmp = A[j,k]
+        A[j, k] = conj(q11) * A[j, k] + conj(q21) * A[j + 1, k]
+        A[j + 1, k] = conj(q12) * tmp + conj(q22) * A[j + 1, k]
+      end
+      j += 2
+    end
+  end
+  return A
+end
+
+function lmul_LQD_Q!(F::LQD, A::AbstractMatrix)
+  Qdata = getfield(F, :Qdata)
+  ipiv = getfield(F, :ipiv)
+  n = length(ipiv)
+  j = 1
+  while j <= n
+    if ipiv[j] >= 1
+      q11 = Qdata[j,1]
+      for k in axes(A,2)
+        A[j, k] = q11*A[j, k]
+      end
+      j += 1
+    else
+      q11 = Qdata[j,1]
+      q12 = Qdata[j,2]
+      q21 = Qdata[j+1, 1]
+      q22 = Qdata[j+1, 2]
+      for k in axes(A,2)
+        tmp = A[j,k]
+        A[j, k] = q11 * A[j, k] + q12 * A[j + 1, k]
+        A[j + 1, k] = q21 * tmp + q22 * A[j + 1, k]
+      end
+      j += 2
+    end
+  end
+  return A
+end
 
 function Base.getproperty(F::LQD, sym::Symbol)
   if sym === :D
