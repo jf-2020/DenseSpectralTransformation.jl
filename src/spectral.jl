@@ -37,6 +37,42 @@ struct EtaXError{T} <: Exception
 end
 
 function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
+function save_diag!(A, x)
+  n = minimum(size(A))
+  for j in 1:n
+    x[j] = A[j,j]
+  end
+end
+
+function restore_diag!(A, x)
+  n = minimum(size(A))
+  for j in 1:n
+    A[j,j] = x[j]
+  end
+end
+
+function fill_hermitian!(A::RealHermSymComplexHerm)
+  Base.require_one_based_indexing(A)
+
+  m = size(A,1)
+
+  if A.uplo == 'U'
+    for j in 1:m
+      for k in j+1:m
+        A.data[k,j] = conj(A.data[j,k])
+      end
+    end
+  elseif A.uplo == 'L'
+    for j in 1:m
+      for k in j+1:m
+        A.data[j,k] = conj(A.data[k,j])
+      end
+    end
+  else
+    error("Incorrect value of uplo for a Hermitian matrix.")
+  end
+
+end
 
   Base.require_one_based_indexing(A,B)
   
