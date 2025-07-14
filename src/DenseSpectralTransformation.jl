@@ -1,15 +1,13 @@
 module DenseSpectralTransformation
 
 using LinearAlgebra
+using LinearAlgebra: BlasReal, RealHermSymComplexHerm
 
 include("lqds.jl")
 export lqd!, lqd, LQD
 
 include("spectral.jl")
-export eig_spectral_trans, shift, EtaXError
-
-include("../test/test_lqds.jl")
-include("../test/test_spectral.jl")
+export eig_spectral_trans, eig_spectral_trans!, shift, EtaXError
 
 using PrecompileTools
 
@@ -20,18 +18,13 @@ using PrecompileTools
     Br = [1 / (i + j - 1) for i = 1:n, j = 1:n]
     Ar = randn(n, n)
     Ar = Ar + Ar'
-
-    TestLQDS.run_test(Hermitian(Ar, :L), tol)
-    TestSpectral.run_test(Ar, Br, 5.0, tol)
+    eig_spectral_trans(Hermitian(Ar), Hermitian(Br), 5.0, ηx_max=100.0)
 
     Bc = Complex{Float64}[1 / (i + j - 1) for i = 1:n, j = 1:n]
     Ac = randn(Complex{Float64}, n, n)
     Ac = Ac + Ac'
-
-    TestLQDS.run_test(Hermitian(Ac, :L), tol)
-    TestSpectral.run_test(Ac, Bc, 5.0, tol)
+    eig_spectral_trans(Hermitian(Ac), Hermitian(Bc), 5.0, ηx_max=100.0)
   end
 end
-
 
 end # module SymDefGenEig

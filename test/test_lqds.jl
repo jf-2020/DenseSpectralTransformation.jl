@@ -1,12 +1,4 @@
-module TestLQDS
-
-using DenseSpectralTransformation
-using LinearAlgebra
-using Test
-
-
-
-function run_test(A, tol)
+function run_lqds_test(A, tol)
   n = size(A,1)
   nrma = opnorm(A)
   F = lqd(A)
@@ -49,5 +41,4 @@ function run_test(A, tol)
     @test opnorm(inv(X)' - I0/F') <= tol * sqrt(nrma)
   end
 
-end
 end

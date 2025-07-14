@@ -16,6 +16,7 @@ function shift!(
   B::AbstractMatrix{Complex{E}},
   σ,
 ) where {E<:AbstractFloat}
+
   for k in axes(A, 2)
     for j in axes(A, 1)
       zr = fma(-σ, real(B[j, k]), real(A[j, k]))
@@ -36,7 +37,6 @@ struct EtaXError{T} <: Exception
   etax :: T
 end
 
-function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
 function save_diag!(A, x)
   n = minimum(size(A))
   for j in 1:n
@@ -48,6 +48,34 @@ function restore_diag!(A, x)
   n = minimum(size(A))
   for j in 1:n
     A[j,j] = x[j]
+  end
+end
+
+# Form the product X'*D*X in W.
+@views function sym_mul2!(W, X, D; work = zeros(eltype(X), size(X, 1)))
+  n, r = size(X)
+  work = work[1:n]
+  for k in 1:r
+    @. work = X[:, k]
+    lmul!(D, work)
+    A = W.data
+    if W.uplo == 'L'
+      for j in k:r
+        A[j, k] = zero(eltype(W))
+        for l in 1:n
+          A[j, k] += conj(X[l, j]) * work[l]
+        end
+      end
+    elseif W.uplo == 'U'
+      for j in 1:k
+        A[j, k] = zero(eltype(W))
+        for l in 1:n
+          A[j, k] += conj(X[l, j]) * work[l]
+        end
+      end
+    else
+      error("uplo should be L or U, not $(W.uplo)")
+    end
   end
 end
 
@@ -74,10 +102,29 @@ function fill_hermitian!(A::RealHermSymComplexHerm)
 
 end
 
-  Base.require_one_based_indexing(A,B)
-  
+
+function eig_spectral_trans!(
+  A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+  B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+  σ;
+  ηx_max = 500.0,
+  tol = 0.0,
+  )
+
+  Base.require_one_based_indexing(A, B)
+
+  Ah = A
+  Bh = B
+
+  fill_hermitian!(Ah)
+  fill_hermitian!(Bh)
+
+  A = Ah.data
+  B = Bh.data
+
   m, n = size(A)
   mb, nb = size(B)
+
   m == n ||
     throw(DimensionMismatch("Matrix A is not square: dimensions are ($m, $n)"))
   mb == nb ||
@@ -86,32 +133,69 @@ end
     throw(DimensionMismatch(
       "Matrix A has dimensions ($m,$n) and B has dimensions ($mb,$nb)"))
 
-  Fb = cholesky(Hermitian(B), RowMaximum(), tol = tol, check = false)
-  A1 = shift(A, B, σ)
+  E = promote_type(eltype(A), eltype(B), eltype(σ))
+  tmp1 = Array{E}(undef, n)
+  tmp2 = Array{E}(undef, n)
+
+  shift!(A, B, σ)
+
+  Fb = cholesky!(Hermitian(B, :L), RowMaximum(), tol = tol, check = false)
 
   r = Fb.rank
   ip = invperm(Fb.p)
-  Cb = Matrix(Fb.L)[ip, 1:r]
-  
-  Fa = lqd(Hermitian(A1, :L))
+
+  Cb = view(Fb.factors, :, 1:r)
+  z = zero(eltype(Cb))
+  for k in 2:r
+    for j in 1:(k - 1)
+      Cb[j, k] = z
+    end
+  end
+
+  Base.permutecols!!(Cb', ip)
+  η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
+
+  # Fa = lqd!(Hermitian(A, :U))
+  Fa = lqd!(Hermitian(A, :L))
 
   Da = Fa.S
-  η = sqrt(opnorm(A1, Inf) / opnorm(B, Inf))
-  
-  X = Fa\Cb
+  # X = Fa\Cb
+  X = Cb
+  Base.permutecols!!(X', copy(Fa.p))
+  ldiv!(Fa.L, X)
+  ldiv_LQD_Q!(Fa, X)
+  ldiv!(Fa.D, X)
+
   ηx = η * opnorm(X, Inf)
   ηx <= ηx_max || throw(EtaXError(ηx))
 
-  W = X'*(Da*X)
+  # W = X'*(Da*X)
+  save_diag!(A, tmp2)
+  W = Hermitian(view(A, 1:r, 1:r), :U)
+  sym_mul2!(W, X, Da; work = tmp1)
 
-  θ, U = eigen(Hermitian(W))
+  θ, U = eigen!(W)
+
   λ = similar(θ)
   β = copy(θ)
   α = similar(θ)
   for j in 1:r
     α[j] = fma(σ, θ[j], one(λ[j]))
-    λ[j] = α[j]/β[j]
+    λ[j] = α[j] / β[j]
   end
-  V = Fa' \ (Da*(X*U))
+  restore_diag!(A, tmp2)
+
+  # V = Fa' \ (Da*(X*U))
+  lmul!(Da, X)
+  ldiv!(Fa.D, X)
+  lmul_LQD_Q!(Fa, X)
+  ldiv!(Fa.L', X)
+  Base.permutecols!!(X', invperm(Fa.p))
+  V = view(A, :, 1:r)
+  mul!(V, X, U)
   return Cb, U, θ, λ, α, β, V, X, η, Da
+end
+
+function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
+  return eig_spectral_trans!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol)
 end

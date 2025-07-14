@@ -92,7 +92,7 @@ function run_spectral(
   bound_small = nothing, 
 )
   Cb, U, θ, λ, α, β, V, X, η, Da =
-    eig_spectral_trans(A, B, σ; ηx_max = ηx_max, tol = tol)
+    eig_spectral_trans(Hermitian(A), Hermitian(B), σ; ηx_max = ηx_max, tol = tol)
   n, _ = size(A)
   r = length(θ)
   println("Rank: $r")
@@ -171,12 +171,18 @@ default(
   tickfontsize = 10,
 )
 
-plotdir::String = "./plots/"
 # Fluid flow example
-B0::Matrix{Float64} = Matrix(MatrixMarket.mmread("MatrixMarket/bcsstm13.mtx"))
+proj = dirname(Base.active_project())
+plotdir::String = joinpath(proj,"./plots/")
+
+# B0::Matrix{Float64} = Matrix(MatrixMarket.mmread("./MatrixMarket/bcsstm13.mtx"))
+file_bcsstm = joinpath(proj, "./MatrixMarket/bcsstm13.mtx")
+B0::Matrix{Float64} = Matrix(MatrixMarket.mmread(file_bcsstm))
 n::Int64 = size(B0,2)
-A0::Matrix{Float64} = Matrix(MatrixMarket.mmread("MatrixMarket/bcsstk13.mtx"))
-# n = 50
+# A0::Matrix{Float64} = Matrix(MatrixMarket.mmread("./MatrixMarket/bcsstk13.mtx"))
+file_bcsstk = joinpath(proj, "./MatrixMarket/bcsstk13.mtx")
+A0::Matrix{Float64} = Matrix(MatrixMarket.mmread(file_bcsstk))
+
 B0 = B0[1:n, 1:n]
 A0 = A0[1:n, 1:n]
 dB::Vector{Float64} = (x -> exp(-0.02*x)).(collect(n:-1:1)) * opnorm(B0)

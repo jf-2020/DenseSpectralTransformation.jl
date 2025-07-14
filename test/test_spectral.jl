@@ -1,18 +1,14 @@
-module TestSpectral
-using DenseSpectralTransformation
-using LinearAlgebra
-using Test
-
-function run_test(A, B, σ, tol)
+function run_spectral_test(A, B, σ, tol)
   n = size(A,1)
   nrma = opnorm(A)
   nrmb = opnorm(B)
 
   Cb, U, θ, λ, α, β, V, X, η, Da =
-    eig_spectral_trans(A, B, σ, ηx_max=100)
+    eig_spectral_trans(A, B, σ, ηx_max=100.0)
 
   @testset "Residual test" begin
     R = A*V*Diagonal(β) - B*V*Diagonal(α)
+
     z = zeros(length(α))
     @views for k in axes(R,2)
       z[k] =
@@ -32,6 +28,4 @@ function run_test(A, B, σ, tol)
   end
 
 end
-end
-
 
