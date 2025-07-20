@@ -27,56 +27,82 @@ function shift!(
     return A
 end
 
-function shift(A::AbstractMatrix, B::AbstractMatrix, σ)
-    A1 = copy(A)
-    shift!(A1, B, σ)
-    return A1
-end
-
 struct EtaXError{T} <: Exception
     etax :: T
 end
 
-function save_diag!(A, x)
-    n = minimum(size(A))
-    for j in 1:n
+function save_diag!(A, x; r = minimum(size(A)))
+    for j in 1:r
         x[j] = A[j,j]
     end
 end
 
-function restore_diag!(A, x)
-    n = minimum(size(A))
-    for j in 1:n
+function restore_diag!(A, x; r = minimum(size(A)))
+    for j in 1:r
         A[j,j] = x[j]
     end
 end
 
-# Form the product X'*D*X in W.
-@views function sym_mul2!(W, X, D; work = zeros(eltype(X), size(X, 1)))
-    n, r = size(X)
-    work = work[1:n]
-    for k in 1:r
-        @. work = X[:, k]
-        lmul!(D, work)
-        A = W.data
-        if W.uplo == 'L'
-            for j in k:r
-                A[j, k] = zero(eltype(W))
-                for l in 1:n
-                    A[j, k] += conj(X[l, j]) * work[l]
-                end
+function triangularize_hermitian!(A::RealHermSymComplexHerm; r = size(A,1))
+    z = zero(eltype(A))
+    n = size(A,1)
+    if A.uplo == 'L'
+        for k in 2:r
+            for j in 1:(k - 1)
+                A.data[j, k] = z
             end
-        elseif W.uplo == 'U'
-            for j in 1:k
-                A[j, k] = zero(eltype(W))
-                for l in 1:n
-                    A[j, k] += conj(X[l, j]) * work[l]
-                end
+        end
+    else
+        for k in 1:r-1
+            for j in k+1:r
+                A.data[j, k] = z
             end
-        else
-            error("uplo should be L or U, not $(W.uplo)")
         end
     end
+end
+
+@views function sym_mul_lower_blocked!(X,
+                                       D;
+                                       bs = 64,
+                                       work1 = zeros(eltype(X), size(X,1),
+                                                     min(bs, size(X,2))),
+                                       work2 = zeros(eltype(X), size(X,1),
+                                                     min(bs, size(X,2))))
+
+    n, r = size(X)
+    work1 = work1[1:n, 1:min(bs, r)]
+    work2 = work2[1:n, 1:min(bs, r)]
+    lb, remb = divrem(r, bs)
+    for l = 1:lb
+        @. work1 = X[:, (l-1)*bs + 1 : l*bs]
+        @. work2 = X[:, (l-1)*bs + 1 : l*bs]
+        lmul!(D, work1[:, 1:bs])
+        mul!(X[l*bs+1:r, (l-1)*bs + 1 : l*bs], X[:, l*bs + 1 : r]', work1)
+        mul!(X[(l-1)*bs+1:l*bs, (l-1)*bs+1:l*bs], work1[:, 1:bs]', work2)
+    end
+    if remb > 0
+        @. work1[:, 1:remb] = X[:, lb*bs + 1 : r]
+        @. work2[:, 1:remb] = X[:, lb*bs + 1 : r]
+        lmul!(D, work1[:, 1:remb])
+        mul!(X[lb*bs + 1 : r, lb*bs + 1 : r], work1[:, 1:remb]', work2[:, 1:remb])
+    end
+    return nothing
+end
+
+@views function rmul_blocked!(X, U; bs = 64, work = zeros(eltype(X), min(bs, size(X,1)),
+                                                          size(X,2)))
+    n, r = size(X)
+    m = size(U,2)
+    bs = min(bs, size(X,1))
+    work = work[1:bs, 1:r]
+    lb, remb = divrem(n, bs)
+    for l = 1:lb
+        @. work = X[(l-1)*bs + 1 : l*bs, :]
+        mul!(X[(l-1)*bs + 1 : l*bs, 1:m], work, U)
+    end
+    @. work[1:remb, :] = X[lb * bs + 1 : n, :]
+    mul!(X[lb * bs + 1 : n, 1:m], work[1:remb, :], U)
+    return nothing
 end
 
 function fill_hermitian!(A::RealHermSymComplexHerm)
@@ -96,19 +122,64 @@ function fill_hermitian!(A::RealHermSymComplexHerm)
                 A.data[j,k] = conj(A.data[k,j])
             end
         end
-    else
-        error("Incorrect value of uplo for a Hermitian matrix.")
     end
 
 end
 
+function copy_hermitian!(A::RealHermSymComplexHerm, 
+                         B::RealHermSymComplexHerm;
+                         r = size(A,1))
 
-function eig_spectral_trans!(
+    Base.require_one_based_indexing(A, B)
+
+    ma = size(A,1)
+    mb = size(B,1)
+
+    ma == mb ||
+        throw(DimensionMismatch(
+            "Matrix A has dimensions ($ma,$ma) and B has dimensions ($mb,$mb)"))
+
+    m = ma
+
+    if A.uplo == 'U'
+        if B.uplo == 'U'
+            for k in 1:m
+                for j in 1:min(k,r)
+                    B.data[j,k] = A.data[j,k]
+                end
+            end
+        else
+            for k in 1:m
+                for j in 1:min(k,r)
+                    B.data[k,j] = conj(A.data[j,k])
+                end
+            end
+        end
+    elseif A.uplo == 'L'
+        if B.uplo == 'U'
+            for k in 1:r
+                for j in k:m
+                    B.data[k,j] = conj(A.data[j,k])
+                end
+            end
+        else
+            for k in 1:r
+                for j in k:m
+                    B.data[j,k] = A.data[j,k]
+                end
+            end
+        end
+    end
+
+end
+
+@views function eig_spectral_trans!(
     A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     σ;
     ηx_max = 500.0,
     tol = 0.0,
+    bs = 64
     )
 
     Base.require_one_based_indexing(A, B)
@@ -134,8 +205,8 @@ function eig_spectral_trans!(
             "Matrix A has dimensions ($m,$n) and B has dimensions ($mb,$nb)"))
 
     E = promote_type(eltype(A), eltype(B), eltype(σ))
-    tmp1 = Array{E}(undef, n)
-    tmp2 = Array{E}(undef, n)
+    tmpa = Array{E}(undef, n)
+    tmpb = Array{E}(undef, n)
 
     shift!(A, B, σ)
 
@@ -144,23 +215,24 @@ function eig_spectral_trans!(
     r = Fb.rank
     ip = invperm(Fb.p)
 
-    Cb = view(Fb.factors, :, 1:r)
-    z = zero(eltype(Cb))
-    for k in 2:r
-        for j in 1:(k - 1)
-            Cb[j, k] = z
-        end
-    end
+    Cb = Fb.factors
+    triangularize_hermitian!(Hermitian(Cb, :L))
 
-    Base.permutecols!!(Cb', ip)
+    save_diag!(B, tmpb; r = r)
+
     η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
 
-    # Fa = lqd!(Hermitian(A, :U))
     Fa = lqd!(Hermitian(A, :L))
+    save_diag!(A, tmpa) # Do I need this?
+    
 
     Da = Fa.S
     # X = Fa\Cb
-    X = Cb
+    copy_hermitian!(Hermitian(Cb, :L), Hermitian(A, :U); r = r)
+    restore_diag!(A, tmpa, r = r)
+
+    X = Cb[:, 1:r]
+    Base.permutecols!!(X', copy(ip))
     Base.permutecols!!(X', copy(Fa.p))
     ldiv!(Fa.L, X)
     ldiv_LQD_Q!(Fa, X)
@@ -169,10 +241,8 @@ function eig_spectral_trans!(
     ηx = η * opnorm(X, Inf)
     ηx <= ηx_max || throw(EtaXError(ηx))
 
-    # W = X'*(Da*X)
-    save_diag!(A, tmp2)
-    W = Hermitian(view(A, 1:r, 1:r), :U)
-    sym_mul2!(W, X, Da; work = tmp1)
+    sym_mul_lower_blocked!(X, Da; bs = bs)
+    W = Hermitian(X[1:r, 1:r], :L)
 
     θ, U = eigen!(W)
 
@@ -183,16 +253,26 @@ function eig_spectral_trans!(
         α[j] = fma(σ, θ[j], one(λ[j]))
         λ[j] = α[j] / β[j]
     end
-    restore_diag!(A, tmp2)
+
+    copy_hermitian!(Hermitian(A, :U), Hermitian(B, :L); r = r)
+    restore_diag!(B, tmpb, r = r)
+    triangularize_hermitian!(Hermitian(Cb, :L))
+
+    # recompute X
+    Base.permutecols!!(X', ip)
+    Base.permutecols!!(X', copy(Fa.p))
+    ldiv!(Fa.L, X)
+    ldiv_LQD_Q!(Fa, X)
+    ldiv!(Fa.D, X)
 
     # V = Fa' \ (Da*(X*U))
+    rmul_blocked!(X, U, bs = bs)
     lmul!(Da, X)
     ldiv!(Fa.D, X)
     lmul_LQD_Q!(Fa, X)
     ldiv!(Fa.L', X)
     Base.permutecols!!(X', invperm(Fa.p))
-    V = view(A, :, 1:r)
-    mul!(V, X, U)
+    V = X
     return Cb, U, θ, λ, α, β, V, X, η, Da
 end
 
