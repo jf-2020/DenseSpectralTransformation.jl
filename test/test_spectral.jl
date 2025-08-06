@@ -3,8 +3,12 @@ function run_spectral_test(A, B, σ, tol)
     nrma = opnorm(A)
     nrmb = opnorm(B)
 
-    Cb, U, θ, λ, α, β, V, X, η, Da =
-        eig_spectral_trans(A, B, σ, ηx_max=100.0)
+    F = eig_spectral_trans(A, B, σ, ηx_max=100.0)
+    α = F.alphas
+    β = F.betas
+    λ = F.values
+    V = F.vectors
+    
 
     @testset "Residual test" begin
         R = A*V*Diagonal(β) - B*V*Diagonal(α)

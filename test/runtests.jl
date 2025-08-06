@@ -3,9 +3,6 @@ using SafeTestsets
 using LinearAlgebra
 using Test
 
-# include("../test/test_lqds.jl")
-
-
 @safetestset "LQDS Tests Lower, Float64" begin
     using LinearAlgebra
     using DenseSpectralTransformation

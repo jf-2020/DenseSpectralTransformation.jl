@@ -91,17 +91,24 @@ function run_spectral(
     bound_large = nothing,
     bound_small = nothing, 
     )
-    Cb, U, θ, λ, α, β, V, X, η, Da =
-        eig_spectral_trans(Hermitian(A), Hermitian(B), σ; ηx_max = ηx_max, tol = tol)
-    n, _ = size(A)
-    r = length(θ)
-    println("Rank: $r")
+
+    F = eig_spectral_trans(Hermitian(A), Hermitian(B), σ; ηx_max = ηx_max, tol = tol)
+    α = F.alphas
+    β = F.betas
+    θ = β
+    λ = F.values
+    V = F.vectors
+
     p = sortperm(λ)
     λ = λ[p]
     V = V[:, p]
     α = α[p]
     β = β[p]
     θ = θ[p]
+
+    n, _ = size(A)
+    r = length(θ)
+    println("Rank: $r")
     R = (A * V * Diagonal(β) - B * V * Diagonal(α))
     @views for k = 1:r
         z = (abs(β[k]) * nrma2 + abs(α[k]) * nrmb2) * norm(V[:, k])

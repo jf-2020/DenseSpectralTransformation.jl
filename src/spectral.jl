@@ -1,3 +1,41 @@
+struct DefiniteGenEigen{F,V,S<:AbstractMatrix,
+                        P<:AbstractVector{Tuple{V, V}}} <: Factorization{F}
+    pairs::P
+    vectors::S
+    DefiniteGenEigen{F,V,S,P}(pairs::AbstractVector{Tuple{V, V}},
+                              vectors::AbstractMatrix{F}) where {F,V,S,P} =
+                                  new(pairs, vectors)
+end
+
+DefiniteGenEigen(pairs::AbstractVector{Tuple{V, V}},
+                 vectors::AbstractMatrix{T}) where {T,V} =
+    DefiniteGenEigen{T,V,typeof(vectors),typeof(pairs)}(pairs, vectors)
+
+Base.iterate(S::DefiniteGenEigen) = (S.pairs, Val(:vectors))
+Base.iterate(S::DefiniteGenEigen, ::Val{:vectors}) = (S.vectors, Val(:done))
+Base.iterate(S::DefiniteGenEigen, ::Val{:done}) = nothing
+
+function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, F::DefiniteGenEigen)
+    summary(io, F)
+    println(io)
+    println(io, "pairs:")
+    show(io, mime, F.pairs)
+    println(io, "\nvectors:")
+    show(io, mime, F.vectors)
+end
+
+function Base.getproperty(F::DefiniteGenEigen, sym::Symbol)
+    if sym === :alphas
+        return first.(getfield(F,:pairs))
+    elseif sym === :betas
+        return (x -> x[2]).(getfield(F,:pairs))
+    elseif sym === :values
+        return first.(getfield(F,:pairs)) ./ (x -> x[2]).(getfield(F,:pairs))
+    else
+        return getfield(F, sym)
+    end
+end
+
 function shift!(
     A::AbstractMatrix{E},
     B::AbstractMatrix{E},
@@ -176,7 +214,7 @@ end
 @views function eig_spectral_trans!(
     A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
-    σ;
+    σ::Real;
     ηx_max = 500.0,
     tol = 0.0,
     bs = 64
@@ -227,7 +265,8 @@ end
     
 
     Da = Fa.S
-    # X = Fa\Cb
+    # Do X = Fa\Cb
+    # save_diag!(B, tmpb; r = r)
     copy_hermitian!(Hermitian(Cb, :L), Hermitian(A, :U); r = r)
     restore_diag!(A, tmpa, r = r)
 
@@ -265,7 +304,8 @@ end
     ldiv_LQD_Q!(Fa, X)
     ldiv!(Fa.D, X)
 
-    # V = Fa' \ (Da*(X*U))
+
+    # Compute V = Fa' \ (Da*(X*U))
     rmul_blocked!(X, U, bs = bs)
     lmul!(Da, X)
     ldiv!(Fa.D, X)
@@ -273,7 +313,7 @@ end
     ldiv!(Fa.L', X)
     Base.permutecols!!(X', invperm(Fa.p))
     V = X
-    return Cb, U, θ, λ, α, β, V, X, η, Da
+    return DefiniteGenEigen(collect(zip(α, β)), V)
 end
 
 function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)

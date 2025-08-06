@@ -7,8 +7,8 @@ include("lqds.jl")
 export lqd!, lqd, LQD
 
 include("spectral.jl")
-export eig_spectral_trans, eig_spectral_trans!, shift, EtaXError
-
+export eig_spectral_trans, eig_spectral_trans!,
+    shift, EtaXError, DefiniteGenEigen
 using PrecompileTools
 
 @setup_workload begin
