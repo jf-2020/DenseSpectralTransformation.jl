@@ -246,6 +246,7 @@ end
     tmpb = Array{E}(undef, n)
 
     shift!(A, B, σ)
+    η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
 
     Fb = cholesky!(Hermitian(B, :L), RowMaximum(), tol = tol, check = false)
 
@@ -254,8 +255,6 @@ end
 
     Cb = Fb.factors
     triangularize_hermitian!(Hermitian(Cb, :L))
-
-    η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
 
     Fa = lqd!(Hermitian(A, :L))
     # save_diag!(A, tmpa) # TODO: Do I need this?
@@ -273,6 +272,8 @@ end
     ldiv_LQD_Q!(Fa, X)
     ldiv!(Fa.D, X)
 
+    # the Inf norm gives an inflated value relative to the 2-norm bounds in the paper.
+    # But it is fast to compute.
     ηx = η * opnorm(X, Inf)
     ηx <= ηx_max || throw(EtaXError(ηx))
 
