@@ -67,6 +67,7 @@ end
 
 struct EtaXError{T} <: Exception
     etax :: T
+    bound :: T
 end
 
 function save_diag!(A, x; r = minimum(size(A)))
@@ -211,6 +212,30 @@ function copy_hermitian!(A::RealHermSymComplexHerm,
 
 end
 
+function norm_est(A; tol=0.05, maxiters=100)
+
+    m, n = size(A)
+    v = similar(A, n)
+    u = similar(A,m)
+    v .= vec(mapreduce(abs, +, A, dims = 1))
+    normv = norm(v)
+    v = v/normv
+    normA = normv
+    normA0 = zero(normv)
+    iters = 0
+    At = A'
+    while abs(normA0 - normA) > tol*normA && iters < maxiters
+        normA0 = normA
+        mul!(u, A, v)
+        mul!(v, At, u)
+        normA = norm(v)
+        v .= v ./ normA
+        iters += 1
+    end
+    iters >= maxiters && (@warn "Maximum iterations reached in norm_est")
+    return sqrt(normA), iters
+end
+
 @views function eig_spectral_trans!(
     A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
@@ -219,7 +244,9 @@ end
     tol = 0.0,
     bs = 64,
     vl = nothing,
-    vu = nothing
+    vu = nothing,
+    bound_norm_est = true,
+    throw_bound_error = false
     )
 
     Base.require_one_based_indexing(A, B)
@@ -246,7 +273,9 @@ end
     tmpb = Array{E}(undef, n)
 
     shift!(A, B, σ)
-    η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
+    η = bound_norm_est ? sqrt(norm_est(A)[1] / norm_est(B)[1]) :
+        sqrt(opnorm(A, Inf) / opnorm(B, Inf))
+
 
     Fb = cholesky!(Hermitian(B, :L), RowMaximum(), tol = tol, check = false)
 
@@ -272,10 +301,15 @@ end
     ldiv_LQD_Q!(Fa, X)
     ldiv!(Fa.D, X)
 
-    # the Inf norm gives an inflated value relative to the 2-norm bounds in the paper.
-    # But it is fast to compute.
-    ηx = η * opnorm(X, Inf)
-    ηx <= ηx_max || throw(EtaXError(ηx))
+    ηx = bound_norm_est ? η * norm_est(X)[1] : η * opnorm(X, Inf)
+    if ηx > ηx_max
+        if throw_bound_error
+            ηx <= ηx_max || throw(EtaXError(ηx, ηx_max))
+        else
+            @warn "Value of η ||X|| is $(ηx), which exceeds the given bound $(ηx_max)."
+        end
+    end
+
 
     sym_mul_lower_blocked!(X, Da; bs = bs)
     W = Hermitian(X[1:r, 1:r], :L)
