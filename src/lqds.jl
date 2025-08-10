@@ -34,7 +34,6 @@ function lqd!(A::Hermitian{E, <:AbstractMatrix{E}}) where {E}
     n, _ = size(A)
     s = similar(F.p)
     uplo = F.uplo == 'U' ? :U : :L
-    LorUdata = uplo == :U ? F.U.data : F.L.data
     Qdata = similar(F.LD, n, 2)
     Qdata .= zero(eltype(Qdata))
     d = similar(F.LD, n)
@@ -54,66 +53,13 @@ function lqd!(A::Hermitian{E, <:AbstractMatrix{E}}) where {E}
         end
     end
 
+    # TODO: Handle non Blas types.
+    LorUdata, _ = LAPACK.syconvf_rook!(F.uplo, 'C', F.LD, F.ipiv)
+
     return LQD(LorUdata, Qdata, F.ipiv, F.uplo, d, s, F.p)
 end
 
 lqd(A::Hermitian{E,<:AbstractMatrix{E}}) where {E} = lqd!(copy(A))
-
-function ldiv_LQD_Q!(F::LQD, A::AbstractMatrix)
-    Qdata = getfield(F, :Qdata)
-    ipiv = getfield(F, :ipiv)
-    n = length(ipiv)
-    j = 1
-    while j <= n
-        if ipiv[j] >= 1
-            q11 = Qdata[j,1]
-            for k in axes(A,2)
-                A[j, k] = conj(q11)*A[j, k]
-            end
-            j += 1
-        else
-            q11 = Qdata[j,1]
-            q12 = Qdata[j,2]
-            q21 = Qdata[j+1, 1]
-            q22 = Qdata[j+1, 2]
-            for k in axes(A,2)
-                tmp = A[j,k]
-                A[j, k] = conj(q11) * A[j, k] + conj(q21) * A[j + 1, k]
-                A[j + 1, k] = conj(q12) * tmp + conj(q22) * A[j + 1, k]
-            end
-            j += 2
-        end
-    end
-    return A
-end
-
-function lmul_LQD_Q!(F::LQD, A::AbstractMatrix)
-    Qdata = getfield(F, :Qdata)
-    ipiv = getfield(F, :ipiv)
-    n = length(ipiv)
-    j = 1
-    while j <= n
-        if ipiv[j] >= 1
-            q11 = Qdata[j,1]
-            for k in axes(A,2)
-                A[j, k] = q11*A[j, k]
-            end
-            j += 1
-        else
-            q11 = Qdata[j,1]
-            q12 = Qdata[j,2]
-            q21 = Qdata[j+1, 1]
-            q22 = Qdata[j+1, 2]
-            for k in axes(A,2)
-                tmp = A[j,k]
-                A[j, k] = q11 * A[j, k] + q12 * A[j + 1, k]
-                A[j + 1, k] = q21 * tmp + q22 * A[j + 1, k]
-            end
-            j += 2
-        end
-    end
-    return A
-end
 
 function Base.getproperty(F::LQD, sym::Symbol)
     if sym === :D
@@ -255,4 +201,60 @@ end
 function Base.Matrix(F::LQD{E}) where E
     n, _ = size(F)
     return F * Matrix{E}(I, n, n)
+end
+
+function lmul_LQD_Q!(F::LQD, A::AbstractMatrix)
+    Qdata = getfield(F, :Qdata)
+    ipiv = getfield(F, :ipiv)
+    n = length(ipiv)
+    j = 1
+    while j <= n
+        if ipiv[j] >= 1
+            q11 = Qdata[j,1]
+            for k in axes(A,2)
+                A[j, k] = q11*A[j, k]
+            end
+            j += 1
+        else
+            q11 = Qdata[j,1]
+            q12 = Qdata[j,2]
+            q21 = Qdata[j+1, 1]
+            q22 = Qdata[j+1, 2]
+            for k in axes(A,2)
+                tmp = A[j,k]
+                A[j, k] = q11 * A[j, k] + q12 * A[j + 1, k]
+                A[j + 1, k] = q21 * tmp + q22 * A[j + 1, k]
+            end
+            j += 2
+        end
+    end
+    return A
+end
+
+function ldiv_LQD_Q!(F::LQD, A::AbstractMatrix)
+    Qdata = getfield(F, :Qdata)
+    ipiv = getfield(F, :ipiv)
+    n = length(ipiv)
+    j = 1
+    while j <= n
+        if ipiv[j] >= 1
+            q11 = Qdata[j,1]
+            for k in axes(A,2)
+                A[j, k] = conj(q11)*A[j, k]
+            end
+            j += 1
+        else
+            q11 = Qdata[j,1]
+            q12 = Qdata[j,2]
+            q21 = Qdata[j+1, 1]
+            q22 = Qdata[j+1, 2]
+            for k in axes(A,2)
+                tmp = A[j,k]
+                A[j, k] = conj(q11) * A[j, k] + conj(q21) * A[j + 1, k]
+                A[j + 1, k] = conj(q12) * tmp + conj(q22) * A[j + 1, k]
+            end
+            j += 2
+        end
+    end
+    return A
 end
