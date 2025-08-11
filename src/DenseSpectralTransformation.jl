@@ -3,6 +3,8 @@ module DenseSpectralTransformation
 using LinearAlgebra
 using LinearAlgebra: BlasReal, RealHermSymComplexHerm
 
+include("eigen_interval.jl")
+
 include("lqds.jl")
 export lqd!, lqd, LQD
 

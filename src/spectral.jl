@@ -217,10 +217,16 @@ end
     σ::Real;
     ηx_max = 500.0,
     tol = 0.0,
-    bs = 64
+    bs = 64,
+    vl = nothing,
+    vu = nothing
     )
 
     Base.require_one_based_indexing(A, B)
+    n, nb = LinearAlgebra.checksquare(A,B)
+    n == nb ||
+        throw(DimensionMismatch(
+            "Matrix A has dimensions ($n,$n) and B has dimensions ($nb,$nb)"))
 
     Ah = A
     Bh = B
@@ -234,13 +240,6 @@ end
     m, n = size(A)
     mb, nb = size(B)
 
-    m == n ||
-        throw(DimensionMismatch("Matrix A is not square: dimensions are ($m, $n)"))
-    mb == nb ||
-        throw(DimensionMismatch("Matrix B is not square: dimensions are ($mb,$nb)"))
-    n == nb ||
-        throw(DimensionMismatch(
-            "Matrix A has dimensions ($m,$n) and B has dimensions ($mb,$nb)"))
 
     E = promote_type(eltype(A), eltype(B), eltype(σ))
     tmpa = Array{E}(undef, n)
@@ -256,19 +255,16 @@ end
     Cb = Fb.factors
     triangularize_hermitian!(Hermitian(Cb, :L))
 
-    save_diag!(B, tmpb; r = r)
-
     η = sqrt(opnorm(A, Inf) / opnorm(B, Inf))
 
     Fa = lqd!(Hermitian(A, :L))
-    save_diag!(A, tmpa) # Do I need this?
-    
+    # save_diag!(A, tmpa) # TODO: Do I need this?
 
     Da = Fa.S
     # Do X = Fa\Cb
     # save_diag!(B, tmpb; r = r)
     copy_hermitian!(Hermitian(Cb, :L), Hermitian(A, :U); r = r)
-    restore_diag!(A, tmpa, r = r)
+    # restore_diag!(A, tmpa, r = r)
 
     X = Cb[:, 1:r]
     Base.permutecols!!(X', copy(ip))
@@ -283,18 +279,19 @@ end
     sym_mul_lower_blocked!(X, Da; bs = bs)
     W = Hermitian(X[1:r, 1:r], :L)
 
-    θ, U = eigen!(W)
+    θ, U = eigen_interval!(W, σ; vl=vl, vu=vu)
+    m = length(θ)
 
     λ = similar(θ)
     β = copy(θ)
     α = similar(θ)
-    for j in 1:r
+    for j in 1:m
         α[j] = fma(σ, θ[j], one(λ[j]))
         λ[j] = α[j] / β[j]
     end
 
     copy_hermitian!(Hermitian(A, :U), Hermitian(B, :L); r = r)
-    restore_diag!(B, tmpb, r = r)
+    # restore_diag!(B, tmpb, r = r)
     triangularize_hermitian!(Hermitian(Cb, :L))
 
     # recompute X
@@ -307,15 +304,16 @@ end
 
     # Compute V = Fa' \ (Da*(X*U))
     rmul_blocked!(X, U, bs = bs)
-    lmul!(Da, X)
-    ldiv!(Fa.D, X)
-    lmul_LQD_Q!(Fa, X)
-    ldiv!(Fa.L', X)
-    Base.permutecols!!(X', invperm(Fa.p))
-    V = X
+    V = X[:, 1:m]
+    lmul!(Da, V)
+    ldiv!(Fa.D, V)
+    lmul_LQD_Q!(Fa, V)
+    ldiv!(Fa.L', V)
+    Base.permutecols!!(V', invperm(Fa.p))
     return DefiniteGenEigen(collect(zip(α, β)), V)
 end
 
 function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
     return eig_spectral_trans!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol)
 end
+
