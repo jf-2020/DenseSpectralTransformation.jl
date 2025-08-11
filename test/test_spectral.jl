@@ -3,7 +3,7 @@ function run_spectral_test(A, B, σ, tol)
     nrma = opnorm(A)
     nrmb = opnorm(B)
 
-    F = eig_spectral_trans(A, B, σ, ηx_max=100.0)
+    F = definite_gen_eigen(A, B, σ, ηx_max=100.0)
     α = F.alphas
     β = F.betas
     λ = F.values

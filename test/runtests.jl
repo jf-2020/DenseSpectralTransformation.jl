@@ -97,4 +97,3 @@ end
     tol = 1e-13
     run_spectral_test(Hermitian(A), Hermitian(B), 5.0, tol)
 end
-

@@ -236,7 +236,7 @@ function norm_est(A; tol=0.05, maxiters=100)
     return sqrt(normA), iters
 end
 
-@views function eig_spectral_trans!(
+@views function definite_gen_eigen!(
     A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     σ::Real;
@@ -348,7 +348,7 @@ end
     return DefiniteGenEigen(collect(zip(α, β)), V)
 end
 
-function eig_spectral_trans(A, B, σ; ηx_max = 500.0, tol = 0.0)
-    return eig_spectral_trans!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol)
+function definite_gen_eigen(A, B, σ; ηx_max = 500.0, tol = 0.0)
+    return definite_gen_eigen!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol)
 end
 

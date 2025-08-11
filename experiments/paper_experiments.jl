@@ -92,7 +92,7 @@ function run_spectral(
     bound_small = nothing, 
     )
 
-    F = eig_spectral_trans(Hermitian(A), Hermitian(B), σ; ηx_max = ηx_max, tol = tol)
+    F = definite_gen_eigen(Hermitian(A), Hermitian(B), σ; ηx_max = ηx_max, tol = tol)
     α = F.alphas
     β = F.betas
     θ = β

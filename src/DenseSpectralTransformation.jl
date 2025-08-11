@@ -9,7 +9,7 @@ include("lqds.jl")
 export lqd!, lqd, LQD
 
 include("spectral.jl")
-export eig_spectral_trans, eig_spectral_trans!,
+export definite_gen_eigen, definite_gen_eigen!,
     shift, EtaXError, DefiniteGenEigen, norm_est
 using PrecompileTools
 
@@ -20,12 +20,12 @@ using PrecompileTools
         Br = [1 / (i + j - 1) for i = 1:n, j = 1:n]
         Ar = randn(n, n)
         Ar = Ar + Ar'
-        eig_spectral_trans(Hermitian(Ar), Hermitian(Br), 5.0, ηx_max=100.0)
+        definite_gen_eigen(Hermitian(Ar), Hermitian(Br), 5.0, ηx_max=100.0)
 
         Bc = Complex{Float64}[1 / (i + j - 1) for i = 1:n, j = 1:n]
         Ac = randn(Complex{Float64}, n, n)
         Ac = Ac + Ac'
-        eig_spectral_trans(Hermitian(Ac), Hermitian(Bc), 5.0, ηx_max=100.0)
+        definite_gen_eigen(Hermitian(Ac), Hermitian(Bc), 5.0, ηx_max=100.0)
     end
 end
 
