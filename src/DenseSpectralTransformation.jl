@@ -6,7 +6,7 @@ using LinearAlgebra: BlasReal, RealHermSymComplexHerm
 include("eigen_interval.jl")
 
 include("lqds.jl")
-export lqd!, lqd, LQD
+export lqd!, lqd, LQD, LQD_Q
 
 include("spectral.jl")
 export definite_gen_eigen, definite_gen_eigen!,

@@ -13,32 +13,8 @@ function run_lqds_test(A, tol)
         @test opnorm(X - F*I0) <= tol * sqrt(nrma)
     end
 
-    @testset "Right multiply" begin
-        @test opnorm(X - I0*F) <= tol * sqrt(nrma)
-    end
-
     @testset "Left inverse" begin
         @test opnorm(inv(X) - F\I0) <= tol * sqrt(nrma)
-    end
-
-    @testset "Right inverse" begin
-        @test opnorm(inv(X) - I0/F) <= tol * sqrt(nrma)
-    end
-
-    @testset "Left adjoint multiply" begin
-        @test opnorm(X' - F'*I0) <= tol * sqrt(nrma)
-    end
-
-    @testset "Right adjoint multiply" begin
-        @test opnorm(X' - I0*F') <= tol * sqrt(nrma)
-    end
-
-    @testset "Left adjoint inverse" begin
-        @test opnorm(inv(X)' - F'\I0) <= tol * sqrt(nrma)
-    end
-
-    @testset "Right adjoint inverse" begin
-        @test opnorm(inv(X)' - I0/F') <= tol * sqrt(nrma)
     end
 
 end

@@ -1,5 +1,3 @@
-using BlockDiagonals
-
 struct LQD{
     E,
     T<:AbstractMatrix{E},
@@ -26,6 +24,24 @@ struct LQD{
 
         Base.require_one_based_indexing(LorUdata, Qdata)
         new{E,T,V,VI}(LorUdata, Qdata, ipiv, uplo, d, s, p)
+    end
+end
+
+struct LQD_Q{
+    E,
+    T<:AbstractMatrix{E},
+    VI<:AbstractVector{Int64},
+    }
+    Qdata::T
+    ipiv::VI
+
+    function LQD_Q(
+        Qdata::T,
+        ipiv::VI,
+        ) where {E,T<:AbstractMatrix{E},VI<:AbstractVector} 
+
+        Base.require_one_based_indexing(Qdata)
+        new{E,T,VI}(Qdata, ipiv)
     end
 end
 
@@ -75,24 +91,7 @@ function Base.getproperty(F::LQD, sym::Symbol)
     elseif sym === :S
         return Diagonal(getfield(F, :s))
     elseif sym === :Q
-        Qdata = getfield(F, :Qdata)
-        ipiv = getfield(F, :ipiv)
-        n = length(ipiv)
-        Qv = Vector{typeof(view(Qdata, 1:1, 1:1))}(undef, n)
-        j = 1
-        blocks = 0
-        while j <= n
-            if ipiv[j] >= 1
-                blocks += 1
-                Qv[blocks] = view(Qdata, j:j, 1:1)
-                j += 1
-            else
-                blocks += 1
-                Qv[blocks] = view(Qdata, j:(j + 1), 1:2)
-                j += 2
-            end
-        end
-        return BlockDiagonal(Qv[1:blocks])
+        LQD_Q(getfield(F, :Qdata), getfield(F, :ipiv))
     else
         return getfield(F, sym)
     end
@@ -124,86 +123,54 @@ function Base.:*(
     ]
 end
 
-function Base.:*(
-    A::AbstractVecOrMat{E},
-    lqd::LQD{E},
-    ) where {E}
-    return ((A[:,lqd.p] * (lqd.uplo == 'L' ? lqd.L : lqd.U)) * lqd.Q) * lqd.D
-end
-
 function Base.:\(
     lqd::LQD{E},
     A::AbstractVecOrMat{E},
     ) where {E}
-    return lqd.D \ (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U) \ A[lqd.p, :]))
+    return lqd.D \ (lqd.Q \ ((lqd.uplo == 'L' ? lqd.L : lqd.U) \ A[lqd.p, :]))
 end
 
-function Base.:/(
-    A::AbstractMatrix{E},
-    lqd::LQD{E},
-    ) where {E}
-    return (((A / lqd.D) * lqd.Q') / (lqd.uplo == 'L' ? lqd.L : lqd.U))[:, invperm(lqd.p)]
-end
-
-function Base.:/(
-    A::AbstractVector{E},
-    lqd::LQD{E},
-    ) where {E}
-    return (((A / lqd.D) * lqd.Q') / (lqd.uplo == 'L' ? lqd.L : lqd.U))[:, invperm(lqd.p)]
-end
-
-Base.adjoint(lqd::T) where {E, T <: LQD{E}} = Adjoint{E, T}(lqd)
-
-Base.adjoint(adjlqd::Adjoint{E,T}) where {E, T <: LQD{E}} = adjlqd.parent
-
-function Base.:*(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractMatrix{E}) where {E}
-    lqd = adjlqd.parent
-    return lqd.D' * (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U)' * A[lqd.p, :]))
-end
-
-function Base.:*(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractVector{E}) where {E}
-    lqd = adjlqd.parent
-    return lqd.D' * (lqd.Q' * ((lqd.uplo == 'L' ? lqd.L : lqd.U)' * A[lqd.p, :]))
-end
-
-function Base.:*(A::AbstractMatrix{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
-    lqd = adjlqd.parent
-    return (((A * lqd.D') * lqd.Q') * (lqd.uplo == 'L' ? lqd.L : lqd.U)')[
-        :,
-        invperm(lqd.p),
-    ]
-end
-
-function Base.:*(A::AbstractVector{E}, adjlqd::Adjoint{E,<:LQD{E}}) where {E}
-    lqd = adjlqd.parent
-    return (((A * lqd.D') * lqd.Q') * (lqd.uplo == 'L' ? lqd.L : lqd.U)')[
-        :,
-        invperm(lqd.p),
-    ]
-end
-
-function Base.:/(
-    A::AbstractVecOrMat{E},
-    adjlqd::Adjoint{E, <:LQD{E}},
-    ) where {E}
-    lqd = adjlqd.parent
-    return ((A[:, lqd.p] / (lqd.uplo == 'L' ? lqd.L : lqd.U)') * lqd.Q) / lqd.D'
-end
-
-function Base.:\(adjlqd::Adjoint{E,<:LQD{E}}, A::AbstractVecOrMat{E}) where {E}
-    lqd = adjlqd.parent
-    return ((lqd.uplo == 'L' ? lqd.L : lqd.U)' \ (lqd.Q * (lqd.D' \ A)))[
-        invperm(lqd.p),
-        :,
-    ]
-end
 
 function Base.Matrix(F::LQD{E}) where E
     n, _ = size(F)
     return F * Matrix{E}(I, n, n)
 end
 
-function lmul_LQD_Q!(F::LQD, A::AbstractMatrix)
+function Base.:*(
+    Q::LQD_Q{E},
+    A::AbstractMatrix{E},
+    ) where {E}
+    lmul_LQD_Q!(Q, copy(A))
+    return A
+end
+
+function Base.:*(
+    Q::LQD_Q{E},
+    A::AbstractVector{E},
+    ) where {E}
+    v = reshape(copy(A), length(A),1)
+    lmul_LQD_Q!(Q, v)
+    return vec(v)
+end
+
+function Base.:\(
+    Q::LQD_Q{E},
+    A::AbstractMatrix{E},
+    ) where {E}
+    ldiv_LQD_Q!(Q, copy(A))
+    return A
+end
+
+function Base.:\(
+    Q::LQD_Q{E},
+    A::AbstractVector{E},
+    ) where {E}
+    v = reshape(copy(A), length(A),1)
+    ldiv_LQD_Q!(Q, v)
+    return vec(v)
+end
+
+function lmul_LQD_Q!(F::LQD_Q, A::AbstractMatrix)
     Qdata = getfield(F, :Qdata)
     ipiv = getfield(F, :ipiv)
     n = length(ipiv)
@@ -231,7 +198,7 @@ function lmul_LQD_Q!(F::LQD, A::AbstractMatrix)
     return A
 end
 
-function ldiv_LQD_Q!(F::LQD, A::AbstractMatrix)
+function ldiv_LQD_Q!(F::LQD_Q, A::AbstractMatrix)
     Qdata = getfield(F, :Qdata)
     ipiv = getfield(F, :ipiv)
     n = length(ipiv)

@@ -298,7 +298,7 @@ end
     Base.permutecols!!(X', copy(ip))
     Base.permutecols!!(X', copy(Fa.p))
     ldiv!(Fa.L, X)
-    ldiv_LQD_Q!(Fa, X)
+    ldiv_LQD_Q!(Fa.Q, X)
     ldiv!(Fa.D, X)
 
     ηx = bound_norm_est ? η * norm_est(X)[1] : η * opnorm(X, Inf)
@@ -333,7 +333,7 @@ end
     Base.permutecols!!(X', ip)
     Base.permutecols!!(X', copy(Fa.p))
     ldiv!(Fa.L, X)
-    ldiv_LQD_Q!(Fa, X)
+    ldiv_LQD_Q!(Fa.Q, X)
     ldiv!(Fa.D, X)
 
 
@@ -342,7 +342,7 @@ end
     V = X[:, 1:m]
     lmul!(Da, V)
     ldiv!(Fa.D, V)
-    lmul_LQD_Q!(Fa, V)
+    lmul_LQD_Q!(Fa.Q, V)
     ldiv!(Fa.L', V)
     Base.permutecols!!(V', invperm(Fa.p))
     return DefiniteGenEigen(collect(zip(α, β)), V)
