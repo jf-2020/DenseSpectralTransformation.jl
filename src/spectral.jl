@@ -70,33 +70,23 @@ struct EtaXError{T} <: Exception
     bound :: T
 end
 
-function save_diag!(A, x; r = minimum(size(A)))
-    for j in 1:r
-        x[j] = A[j,j]
-    end
-end
-
-function restore_diag!(A, x; r = minimum(size(A)))
-    for j in 1:r
-        A[j,j] = x[j]
-    end
-end
-
-function triangularize_hermitian!(A::RealHermSymComplexHerm; r = size(A,1))
+function triangularize!(A::AbstractMatrix, uplo::Symbol; r = size(A,1))
     z = zero(eltype(A))
     n = size(A,1)
-    if A.uplo == 'L'
+    if uplo === :L
         for k in 2:r
             for j in 1:(k - 1)
-                A.data[j, k] = z
+                A[j, k] = z
+            end
+        end
+    elseif uplo === :U
+        for k in 1:r-1
+            for j in k+1:r
+                A[j, k] = z
             end
         end
     else
-        for k in 1:r-1
-            for j in k+1:r
-                A.data[j, k] = z
-            end
-        end
+        throw(ArgumentError("uplo must be :L or :U."))
     end
 end
 
@@ -236,7 +226,13 @@ function norm_est(A; tol=0.05, maxiters=100)
     return sqrt(normA), iters
 end
 
-@views function definite_gen_eigen!(
+# The following computes a Hermitian matrix W associated with the
+# shifted and inverted generalized eigenvalue problem.  It also
+# returns the rank of B, established by tolerance tol, along with
+# factorizations of A and B.  However, the lower triangular pivoted
+# Cholesky factorization of B is in the upper triangular part of B.
+# Fb does include the permutation.
+@views function _setup_eig!(
     A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
     σ::Real;
@@ -255,18 +251,11 @@ end
         throw(DimensionMismatch(
             "Matrix A has dimensions ($n,$n) and B has dimensions ($nb,$nb)"))
 
-    Ah = A
-    Bh = B
+    fill_hermitian!(A)
+    fill_hermitian!(B)
 
-    fill_hermitian!(Ah)
-    fill_hermitian!(Bh)
-
-    A = Ah.data
-    B = Bh.data
-
-    m, n = size(A)
-    mb, nb = size(B)
-
+    A = A.data
+    B = B.data
 
     E = promote_type(eltype(A), eltype(B), eltype(σ))
     tmpa = Array{E}(undef, n)
@@ -283,16 +272,13 @@ end
     ip = invperm(Fb.p)
 
     Cb = Fb.factors
-    triangularize_hermitian!(Hermitian(Cb, :L))
+    triangularize!(Cb, :L; r=r)
 
     Fa = lqd!(Hermitian(A, :L))
-    # save_diag!(A, tmpa) # TODO: Do I need this?
 
     Da = Fa.S
     # Do X = Fa\Cb
-    # save_diag!(B, tmpb; r = r)
     copy_hermitian!(Hermitian(Cb, :L), Hermitian(A, :U); r = r)
-    # restore_diag!(A, tmpa, r = r)
 
     X = Cb[:, 1:r]
     Base.permutecols!!(X', copy(ip))
@@ -314,7 +300,29 @@ end
     sym_mul_lower_blocked!(X, Da; bs = bs)
     W = Hermitian(X[1:r, 1:r], :L)
 
-    θ, U = eigen_interval!(W, σ; vl=vl, vu=vu)
+    return r, Fa, Fb, W
+
+end
+
+@views function definite_gen_eigen!(
+    A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+    B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+    σ::Real;
+    ηx_max = 500.0,
+    tol = 0.0,
+    bs = 64,
+    vl = nothing,
+    vu = nothing,
+    bound_norm_est = true,
+    throw_bound_error = false,
+    sortby::Union{Nothing, Function}=nothing
+    )
+
+    r, Fa, Fb, W = _setup_eig!(A, B, σ; ηx_max = ηx_max, tol = tol, bs = bs,
+                               bound_norm_est = bound_norm_est,
+                               throw_bound_error = throw_bound_error)
+
+    θ, U = _eigen_interval!(W, σ; vl=vl, vu=vu)
     m = length(θ)
 
     λ = similar(θ)
@@ -325,12 +333,14 @@ end
         λ[j] = α[j] / β[j]
     end
 
+    A = A.data
+    B = B.data
     copy_hermitian!(Hermitian(A, :U), Hermitian(B, :L); r = r)
-    # restore_diag!(B, tmpb, r = r)
-    triangularize_hermitian!(Hermitian(Cb, :L))
+    X = B[:,1:r]
+    triangularize!(X, :L; r =r)
 
     # recompute X
-    Base.permutecols!!(X', ip)
+    Base.permutecols!!(X', invperm(Fb.p))
     Base.permutecols!!(X', copy(Fa.p))
     ldiv!(Fa.L, X)
     ldiv_LQD_Q!(Fa.Q, X)
@@ -340,15 +350,64 @@ end
     # Compute V = Fa' \ (Da*(X*U))
     rmul_blocked!(X, U, bs = bs)
     V = X[:, 1:m]
-    lmul!(Da, V)
+    lmul!(Fa.S, V)
     ldiv!(Fa.D, V)
     lmul_LQD_Q!(Fa.Q, V)
     ldiv!(Fa.L', V)
     Base.permutecols!!(V', invperm(Fa.p))
-    return DefiniteGenEigen(collect(zip(α, β)), V)
+    pairs = collect(zip(α, β))
+    return DefiniteGenEigen(LinearAlgebra.sorteig!(pairs, V, sortby)...)
 end
 
-function definite_gen_eigen(A, B, σ; ηx_max = 500.0, tol = 0.0)
-    return definite_gen_eigen!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol)
+function definite_gen_eigen(A, B, σ; ηx_max = 500.0, tol = 0.0,
+                            bs = 64, vl = nothing, vu = nothing,
+                            bound_norm_est = true, throw_bound_error = false,
+                            sortby::Union{Function, Nothing}=nothing)
+    return definite_gen_eigen!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol,
+                               bs = bs, vl = vl, vu = vu,
+                               bound_norm_est = bound_norm_est,
+                               throw_bound_error = throw_bound_error,
+                               sortby=sortby)
 end
 
+@views function definite_gen_eigvals!(
+    A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+    B::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+    σ::Real;
+    ηx_max = 500.0,
+    tol = 0.0,
+    bs = 64,
+    vl = nothing,
+    vu = nothing,
+    bound_norm_est = true,
+    throw_bound_error = false,
+    sortby::Union{Nothing, Function}=nothing
+    )
+
+    r, Fa, Fb, W = _setup_eig!(A, B, σ; ηx_max = ηx_max, tol = tol, bs = bs,
+                               bound_norm_est = bound_norm_est,
+                               throw_bound_error = throw_bound_error)
+
+    θ, _ = _eigen_interval!(W, σ; vl=vl, vu=vu, vectors=false)
+    m = length(θ)
+
+    λ = similar(θ)
+    β = copy(θ)
+    α = similar(θ)
+    for j in 1:m
+        α[j] = fma(σ, θ[j], one(λ[j]))
+        λ[j] = α[j] / β[j]
+    end
+    return LinearAlgebra.sorteig!(collect(zip(α, β)), sortby)
+end
+
+function definite_gen_eigvals(A, B, σ; ηx_max = 500.0, tol = 0.0,
+                              bs = 64, vl = nothing, vu = nothing,
+                              bound_norm_est = true, throw_bound_error = false,
+                              sortby::Union{Function, Nothing}=nothing)
+    return definite_gen_eigvals!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol,
+                                 bs = bs, vl = vl, vu = vu,
+                                 bound_norm_est = bound_norm_est,
+                                 throw_bound_error = throw_bound_error,
+                                 sortby=sortby)
+end

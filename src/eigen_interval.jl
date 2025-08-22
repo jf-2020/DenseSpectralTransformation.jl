@@ -4,14 +4,12 @@ using LinearAlgebra: libblastrampoline, BlasFloat, BlasInt,
     LAPACKException, DimensionMismatch, SingularException, PosDefException,
     chkstride1, checksquare, triu, tril, dot
 
-function eigen_interval!(A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
-                         σ::BlasReal;
-                         sortby::Union{Function,Nothing}=nothing,
-                         vl = nothing, vu = nothing)
+function _eigen_interval!(A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
+                          σ::Real; vl = nothing, vu = nothing, vectors = true)
+    norv = vectors ? 'V' : 'N'
     if isnothing(vl) && isnothing(vu)
-        return Eigen(LinearAlgebra.sorteig!(
-            syevr_interval!('V', 'A', A.uplo, A.data, 
-                            0.0, 0.0, 0, 0, -1.0)..., sortby)...)
+        return syevr_interval!(norv, 'A', A.uplo, A.data, 
+                               0.0, 0.0, 0, 0, -1.0)
     else
         vl = isnothing(vl) ? -Inf : vl
         vu = isnothing(vu) ? Inf : vu
@@ -21,12 +19,10 @@ function eigen_interval!(A::RealHermSymComplexHerm{<:BlasReal,<:StridedMatrix},
             θu = 1/(vl - σ)
             θl = 1/(vu - σ)
         end
-        return Eigen(LinearAlgebra.sorteig!(
-            syevr_interval!('V', 'V', A.uplo, A.data, 
-                            θl, θu, 0, 0, -1.0)..., sortby)...)
+        return syevr_interval!(norv, 'V', A.uplo, A.data, 
+                               θl, θu, 0, 0, -1.0)
     end
 end
-
 
 for (syevr, elty) in
     ((:dsyevr_,:Float64),
