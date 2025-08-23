@@ -3,6 +3,8 @@ using SafeTestsets
 using LinearAlgebra
 using Test
 
+include("Aqua.jl")
+
 @safetestset "LQDS Tests" begin
     using LinearAlgebra
     using DenseSpectralTransformation
@@ -55,6 +57,14 @@ end
         run_spectral_test(Hermitian(A), Hermitian(B), 5.0, tol)
     end
 
+    @testset "Eigen Interval Test, Float64" begin
+        run_interval_test(Hermitian(A), Hermitian(B), 11.0, tol, 0, 10, 2)
+    end
+
+    @testset "Eigenvalue Sort Test, Float64" begin
+        run_sort_test(Hermitian(A), Hermitian(B), 11.0, tol, 0, 10)
+    end
+
     x = exp.(-.2 * (1:n))
     y = exp.(-.25 * (n:-1:1))
     A = zeros(Complex{Float64}, n, n)
@@ -71,4 +81,13 @@ end
     @testset "Eigen Test, Complex{Float64}" begin
         run_spectral_test(Hermitian(A), Hermitian(B), 5.0, tol)
     end
+
+    @testset "Eigen Interval Test, Complex{Float64}" begin
+        run_interval_test(Hermitian(A), Hermitian(B), 16.0, tol, 0, 15, 2)
+    end
+
+    @testset "Eigenvalue Sort Test, Complex{Float64}" begin
+        run_sort_test(Hermitian(A), Hermitian(B), 16.0, tol, 0, 15)
+    end
+
 end
