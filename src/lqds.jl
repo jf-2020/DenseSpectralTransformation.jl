@@ -98,7 +98,7 @@ function Base.getproperty(F::LQD, sym::Symbol)
 end
 
 Base.size(lqd::LQD) = size(lqd.LorUdata)
-Base.size(lqd::Adjoint{<:LQD}) = size(lqd.parent.LorUdata)
+Base.size(lqd::Adjoint{E, <:LQD{E}}) where {E} = size(lqd.parent.LorUdata)
 
 function Base.show(io::IO, mime::MIME"text/plain", lqd::LQD)
     summary(io, lqd)

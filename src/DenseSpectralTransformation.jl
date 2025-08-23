@@ -10,7 +10,7 @@ export lqd!, lqd, LQD, LQD_Q
 
 include("spectral.jl")
 export definite_gen_eigen, definite_gen_eigen!, definite_gen_eigvals!,
-    definite_gen_eigvals, shift, EtaXError, DefiniteGenEigen, norm_est
+    definite_gen_eigvals, EtaXError, DefiniteGenEigen, norm_est
 using PrecompileTools
 
 @setup_workload begin
