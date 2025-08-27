@@ -388,7 +388,7 @@ end
                                bound_norm_est = bound_norm_est,
                                throw_bound_error = throw_bound_error)
 
-    θ, _ = _eigen_interval!(W, σ; vl=vl, vu=vu, vectors=false)
+    θ = _eigvals_interval!(W, σ; vl=vl, vu=vu)
     m = length(θ)
 
     λ = similar(θ)
