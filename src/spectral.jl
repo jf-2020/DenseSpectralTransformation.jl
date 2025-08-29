@@ -1,3 +1,20 @@
+using LinearAlgebra: HermOrSym, eigtype, eigencopy_oftype
+
+"""
+    DefiniteGenEigen <: Factorization
+
+Matrix factorization type of the generalized eigenvalue/spectral
+decomposition of `A` and `B`, where `A` and `B` are symmetric or
+Hermitian and `B` is positive definite or semidefinite. This is the
+return type of [`definite_gen_eigen`](@ref).
+
+For `F::DefiniteGenEigen`, the eigenvalues are stored as a vector
+of tuples `F.pairs` and the corresponding eigenvectors as the
+columns of the matrix `F.vectors`.
+
+Iterating the decomposition produces the components `F.pairs`, `F.vectors`,
+`F.values`, `F.alphas`, and `F.betas`.
+"""
 struct DefiniteGenEigen{F,V,S<:AbstractMatrix,
                         P<:AbstractVector{Tuple{V, V}}} <: Factorization{F}
     pairs::P
@@ -12,7 +29,10 @@ DefiniteGenEigen(pairs::AbstractVector{Tuple{V, V}},
     DefiniteGenEigen{T,V,typeof(vectors),typeof(pairs)}(pairs, vectors)
 
 Base.iterate(S::DefiniteGenEigen) = (S.pairs, Val(:vectors))
-Base.iterate(S::DefiniteGenEigen, ::Val{:vectors}) = (S.vectors, Val(:done))
+Base.iterate(S::DefiniteGenEigen, ::Val{:vectors}) = (S.vectors, Val(:values))
+Base.iterate(S::DefiniteGenEigen, ::Val{:values}) = (S.values, Val(:alphas))
+Base.iterate(S::DefiniteGenEigen, ::Val{:alphas}) = (S.alphas, Val(:betas))
+Base.iterate(S::DefiniteGenEigen, ::Val{:betas}) = (S.betas, Val(:done))
 Base.iterate(S::DefiniteGenEigen, ::Val{:done}) = nothing
 
 function Base.show(io::IO, mime::MIME{Symbol("text/plain")}, F::DefiniteGenEigen)
@@ -359,11 +379,94 @@ end
     return DefiniteGenEigen(LinearAlgebra.sorteig!(pairs, V, sortby)...)
 end
 
-function definite_gen_eigen(A, B, σ; ηx_max = 500.0, tol = 0.0,
+"""
+    definite_gen_eigen(A::Hermitian, B::Hermitian, σ::Real;
+                       ηx_max = 500.0, tol = 0.0,
+                       bs = 64, vl = nothing, vu = nothing,
+                       bound_norm_est = true, throw_bound_error = false,
+                       sortby::Union{Function, Nothing}=nothing) -> DefiniteGenEigen
+
+Compute the generalized eigenvalues of Hermitian `A` and `B`, with `B`
+assumed positive definite or semidefinite, using a shift and invert
+spectral transformation with shift σ.  A [`DefiniteGenEigen`](@ref) is
+returned.  For `F::DefiniteGenEigen`, the eigenvalues are stored as a
+vector of tuples `F.pairs` and the corresponding eigenvectors as the
+columns of the matrix `F.vectors`.  Iterating the decomposition
+produces the components `F.pairs`, `F.vectors`, `F.values`,
+`F.alphas`, and `F.betas`.  The pairs are of the form `F.pairs[k] ==
+(F.alphas[k], F.betas[k])` and the generalized eigenvalues are
+`F.values[k] == F.alphas[k] / F.betas[k]`.
+
+The matrix `B` is assumed to be positive definite or semidefinite.  A
+(possibly truncated) pivoted Cholesky factorization PᵀBP = LLᵀ is
+computed and the routine computes as an intermediate result the
+eigenvalues and eigenvectors of `Lᵀ Pᵀ (A - σ B)⁻¹ P L`.  These are
+then used to compute the finite generalized eigenvalues and eigenvectors of A
+and B.  That is, for each `k`
+```
+F.beta[k] * A * F.vectors[:,k] ≈ F.alpha[k] * B * F.vectors[:,k]
+```
+and
+```
+A * F.vectors[:,k] ≈ F.values[k] * B * F.vectors[:,k]
+```
+
+The null space of `B` gives eigenvectors for infinite generalized
+eigenvalues.  This is currently not computed.  It should be noted that
+if `B` is not positive definite, then there is no guarantee that there
+are `n` linearly independent generalized eigenvectors.  The way that
+this manifests is that `V` will include a generalized eigenvector
+that is also in the null space of `B`.
+
+The stability properties are not entirely simple, but are better in
+most cases than those of the standard algorithm that works with an
+eigenvalue decomposition `L⁻ᵀ A L⁻¹` and exhibits large residuals for
+smaller eigenvalues.  The algorithm can be used in one of two ways: If
+`σ` is chosen to be not too close to a generalized eigenvalue and if
+the normalized shift `σ₀ = σ ||B||/||A||` is of moderate size, then it
+can be shown that the spectral transformation algorithm gives
+generalized eigenvalues that all achieve small residuals for some
+choice of eigenvector (but not necessarily for the computed eigenvector).
+For eigenvalues that are not dramatically larger than `σ`, the
+computed eigenvectors give a small residual.  Alternately, if a large
+scaled shift `σ₀` is used, then computed eigenvectors for eigenvalues
+not too far from the shift will achieve small residuals.
+
+Keyword parameters:
+
+- `ηx_max = 500`: An upper bound on a scaled norm of an intermediate
+  matrix `X` that appears in a factor in the error bounds.  This
+  factor is large when `σ` is chosen to be too close to a generalized
+  eigenvalue.  If the computed quantity exceeds this bound, either warn
+  the user or throw `EtaXError`, depending on `throw_bound_error`.
+
+- `bound_norm_est = true`: Use power iteration to estimate the 2-norm of `X` before
+  applying `ηx_max` as a threshold.  Otherwise the ∞-norm is used, which is typically
+  more conservative than needed for stability.
+
+- `throw_bound_error = false`:  If `false`, exceeding `ηx_max` is just a warning.
+
+- `tol=0`: The truncation tolerance for a truncated pivoted Cholesky.
+  If `B` is positive definite, the default `tol=0` is appropriate and a full
+  Cholesky decomposition is computed.  
+
+- `bs = 64`: Block size for blocked multiplies of lower and upper triangular
+  matrices.  Adjusting this might change run times for the better or worse.
+
+- `vl = nothing, vu = nothing`: Upper and lower bounds on eigenvalues.
+
+- `sortby=nothing`: Nothing or a function to apply prior to sorting of eigenvalues.
+"""
+function definite_gen_eigen(A::HermOrSym{TA}, B::HermOrSym{TB}, σ::TS;
+                            ηx_max = 500.0, tol = 0.0,
                             bs = 64, vl = nothing, vu = nothing,
                             bound_norm_est = true, throw_bound_error = false,
-                            sortby::Union{Function, Nothing}=nothing)
-    return definite_gen_eigen!(copy(A), copy(B), σ, ηx_max = ηx_max, tol=tol,
+                            sortby::Union{Function, Nothing}=nothing) where {TA,
+                                                                             TB,
+                                                                             TS <: Real}
+    T = promote_type(eigtype(TA), TB, TS)
+    return definite_gen_eigen!(eigencopy_oftype(A,T), eigencopy_oftype(B,T),
+                               convert(real(T), σ), ηx_max = ηx_max, tol=tol,
                                bs = bs, vl = vl, vu = vu,
                                bound_norm_est = bound_norm_est,
                                throw_bound_error = throw_bound_error,
