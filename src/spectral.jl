@@ -56,6 +56,7 @@ function Base.getproperty(F::DefiniteGenEigen, sym::Symbol)
     end
 end
 
+# In-place spectral shift: `A -> A - σ*B`
 function shift!(
     A::AbstractMatrix{E},
     B::AbstractMatrix{E},
@@ -69,6 +70,7 @@ function shift!(
     return A
 end
 
+# Complex overload of the in-place shift
 function shift!(
     A::AbstractMatrix{Complex{E}},
     B::AbstractMatrix{Complex{E}},
@@ -85,11 +87,13 @@ function shift!(
     return A
 end
 
+# Custom error type for exceeding the `eta*||X||` bound
 struct EtaXError{T} <: Exception
     etax :: T
     bound :: T
 end
 
+# Zeroes out, in-place, either the upper or lower part of matrix, `A`
 function triangularize!(A::AbstractMatrix, uplo::Symbol; r = size(A,1))
     z = zero(eltype(A))
     n = size(A,1)
@@ -110,6 +114,7 @@ function triangularize!(A::AbstractMatrix, uplo::Symbol; r = size(A,1))
     end
 end
 
+# Optimized block multiplication (via work buffers and broadcasting) for `X^T*D*X`
 @views function sym_mul_lower_blocked!(X,
                                        D;
                                        bs = 64,
@@ -138,6 +143,7 @@ end
     return nothing
 end
 
+# Another optimized block multiplication, this time for `X*U`
 @views function rmul_blocked!(X, U; bs = 64, work = zeros(eltype(X), min(bs, size(X,1)),
                                                           size(X,2)))
     n, r = size(X)
@@ -154,6 +160,7 @@ end
     return nothing
 end
 
+# Fill in the other triangle of a Hermitian matrix
 function fill_hermitian!(A::RealHermSymComplexHerm)
     Base.require_one_based_indexing(A)
 
@@ -175,6 +182,8 @@ function fill_hermitian!(A::RealHermSymComplexHerm)
 
 end
 
+# Copy one Hermitian matrix to another, respecting upper/lower, filling with conjugates
+# as needed
 function copy_hermitian!(A::RealHermSymComplexHerm, 
                          B::RealHermSymComplexHerm;
                          r = size(A,1))
@@ -222,6 +231,7 @@ function copy_hermitian!(A::RealHermSymComplexHerm,
 
 end
 
+# Norm estimator of `A` via power iteration
 function norm_est(A; tol=0.05, maxiters=100)
 
     m, n = size(A)
@@ -282,9 +292,10 @@ end
     tmpb = Array{E}(undef, n)
 
     shift!(A, B, σ)
+
+    # reasoning: do we want to estimate the norm or not?
     η = bound_norm_est ? sqrt(norm_est(A)[1] / norm_est(B)[1]) :
         sqrt(opnorm(A, Inf) / opnorm(B, Inf))
-
 
     Fb = cholesky!(Hermitian(B, :L), RowMaximum(), tol = tol, check = false)
 
