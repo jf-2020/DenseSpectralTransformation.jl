@@ -347,7 +347,7 @@ end
     lmul_LQD_Q!(Fa.Q, Y) # then by Qa
     ldiv!(Fa.L', Y) # then by La^-T
 
-    # (4) form w
+    # (4) form W
     Wmat = Cb_r' * Y
     W = Hermitian(Wmat, :L)
 
