@@ -308,9 +308,11 @@ end
     Fa = lqd!(Hermitian(A, :L))
 
     Da = Fa.S
-    # Do X = Fa\Cb
+    # Do X = Fa\Cb ## Question: do we need this comment still?
     copy_hermitian!(Hermitian(Cb, :L), Hermitian(A, :U); r = r)
 
+    # MAINTAIN #
+    # e/w, we need to compute the norm estimate differently
     X = Cb[:, 1:r]
     Base.permutecols!!(X', copy(ip))
     Base.permutecols!!(X', copy(Fa.p))
@@ -326,10 +328,33 @@ end
             @warn "Value of η ||X|| is $(ηx), which exceeds the given bound $(ηx_max)."
         end
     end
+    # END MAINTAIN #
 
+    # new rxr copy of Cb
+    Cb_r = Cb[:, 1:r]
 
-    sym_mul_lower_blocked!(X, Da; bs = bs)
-    W = Hermitian(X[1:r, 1:r], :L)
+    # (1) compute Fa \ Cb where Fa = LQD of A - σ*B
+    Y = copy(Cb_r) ## Question: do I need to permute here as above?
+    ldiv!(Fa.L, Y) # premultiply by La^-1
+    ldiv_LQD_Q!(Fa.Q, Y) # then by Qa^T
+    ldiv!(Fa.D, Y) # then by Da^-1
+
+    # (2) apply scaling factors
+    lmul!(Fa.S, Y) # premultiply by D = Fa.S
+
+    # (3) then do the same on the left
+    ldiv!(Fa.D, Y) # premultiply by Da^-1
+    lmul_LQD_Q!(Fa.Q, Y) # then by Qa
+    ldiv!(Fa.L', Y) # then by La^-T
+
+    # (4) form w
+    Wmat = Cb_r' * Y
+    W = Hermitian(Wmat, :L)
+
+    # # REMOVE #
+    # sym_mul_lower_blocked!(X, Da; bs = bs)
+    # W = Hermitian(X[1:r, 1:r], :L)
+    # # END REMOVE #
 
     return r, Fa, Fb, W
 
